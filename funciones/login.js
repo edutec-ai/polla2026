@@ -1,6 +1,9 @@
 // funciones/login.js
 // Módulo de autenticación - VERSIÓN CON CAMBIO OBLIGATORIO DE CONTRASEÑA
-// Botón "Cambiar contraseña" agregado al final de la lista de cuentas
+// - Botón "Cambiar contraseña" como badge pequeño y discreto
+// - Modal con botones "Cambiar contraseña" y "Cancelar"
+// - Autocomplete deshabilitado para evitar sugerencias de Windows
+// - Validación de espacios en blanco
 
 const BASE    = 'https://server.sion.hysintegrar.com/fifa2026/vERP_2_dat_dat/v1';
 const BASE_V2 = 'https://server.sion.hysintegrar.com/fifa2026/vERP_2_dat_dat/v2';
@@ -69,7 +72,12 @@ function mostrarModalCambioPassword(usuario, usrId) {
             <div style="margin-bottom: 16px;">
                 <label style="display: block; font-size: 13px; font-weight: 600; color: #1c1c1e; margin-bottom: 6px;">Nueva contraseña</label>
                 <div style="position: relative;">
-                    <input type="password" id="new-password" placeholder="Ingresa tu nueva contraseña" style="width: 100%; padding: 12px 44px 12px 12px; border: 1px solid #e5e5ea; border-radius: 12px; font-size: 15px; box-sizing: border-box;">
+                    <input type="password" id="new-password" 
+                           autocomplete="new-password"
+                           autocomplete="off"
+                           autocomplete="one-time-code"
+                           placeholder="Ingresa tu nueva contraseña" 
+                           style="width: 100%; padding: 12px 44px 12px 12px; border: 1px solid #e5e5ea; border-radius: 12px; font-size: 15px; box-sizing: border-box;">
                     <button type="button" id="toggle-new-password" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 18px; cursor: pointer;">👁️</button>
                 </div>
             </div>
@@ -77,14 +85,22 @@ function mostrarModalCambioPassword(usuario, usrId) {
             <div style="margin-bottom: 20px;">
                 <label style="display: block; font-size: 13px; font-weight: 600; color: #1c1c1e; margin-bottom: 6px;">Confirmar contraseña</label>
                 <div style="position: relative;">
-                    <input type="password" id="confirm-password" placeholder="Confirma tu nueva contraseña" style="width: 100%; padding: 12px 44px 12px 12px; border: 1px solid #e5e5ea; border-radius: 12px; font-size: 15px; box-sizing: border-box;">
+                    <input type="password" id="confirm-password"
+                           autocomplete="new-password"
+                           autocomplete="off"
+                           autocomplete="one-time-code"
+                           placeholder="Confirma tu nueva contraseña" 
+                           style="width: 100%; padding: 12px 44px 12px 12px; border: 1px solid #e5e5ea; border-radius: 12px; font-size: 15px; box-sizing: border-box;">
                     <button type="button" id="toggle-confirm-password" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 18px; cursor: pointer;">👁️</button>
                 </div>
             </div>
             
             <div id="password-error" style="background: #fff2f2; border-radius: 10px; padding: 10px; margin-bottom: 16px; display: none; color: #ff3b30; font-size: 12px; text-align: center;"></div>
             
-            <button id="btn-cambiar-password" style="width: 100%; background: #007aff; color: white; border: none; border-radius: 14px; padding: 14px; font-size: 16px; font-weight: 600; cursor: pointer;">Cambiar contraseña</button>
+            <div style="display: flex; gap: 12px; margin-top: 8px;">
+                <button id="btn-cambiar-password" style="flex: 1; background: #007aff; color: white; border: none; border-radius: 14px; padding: 14px; font-size: 16px; font-weight: 600; cursor: pointer;">Cambiar contraseña</button>
+                <button id="btn-cancelar-modal" style="flex: 1; background: #f2f2f7; color: #1c1c1e; border: none; border-radius: 14px; padding: 14px; font-size: 16px; font-weight: 600; cursor: pointer;">Cancelar</button>
+            </div>
         </div>
     `;
     
@@ -116,7 +132,21 @@ function mostrarModalCambioPassword(usuario, usrId) {
     }
     
     const cambiarBtn = document.getElementById('btn-cambiar-password');
+    const cancelarBtn = document.getElementById('btn-cancelar-modal');
     const errorDiv = document.getElementById('password-error');
+    
+    // Botón Cancelar
+    if (cancelarBtn) {
+        cancelarBtn.onclick = () => {
+            overlay.remove();
+            modalActivo = false;
+            // Limpiar campos del login
+            const inputUsuario = document.getElementById('inputUsuario');
+            const inputPassword = document.getElementById('inputPassword');
+            if (inputUsuario) inputUsuario.value = '';
+            if (inputPassword) inputPassword.value = '';
+        };
+    }
     
     if (cambiarBtn) {
         cambiarBtn.onclick = async () => {
@@ -201,7 +231,8 @@ function mostrarModalCambioPassword(usuario, usrId) {
     
     overlay.addEventListener('click', (e) => {
         if (e.target === overlay) {
-            return;
+            overlay.remove();
+            modalActivo = false;
         }
     });
 }
@@ -282,11 +313,30 @@ export function configurarLogin(fnCargarFrontpage) {
 }
 
 function ejecutarAutenticacion() {
-  const usuario = document.getElementById('inputUsuario').value.trim().toLowerCase();
-  const pass = document.getElementById('inputPassword').value.trim();
+  // Limpiar espacios en blanco al inicio y final
+  let usuario = document.getElementById('inputUsuario').value;
+  let pass = document.getElementById('inputPassword').value;
+  
+  // Eliminar espacios en blanco al inicio y final
+  usuario = usuario ? usuario.trim().toLowerCase() : '';
+  pass = pass ? pass.trim() : '';
+  
   const errEl = document.getElementById('loginError');
   const btn = document.getElementById('btnIngresar');
   const chkRecordar = document.getElementById('chkRecordar');
+  
+  // Validar que no estén vacíos después de limpiar espacios
+  if (!usuario || !pass) {
+    if (errEl) {
+      errEl.textContent = '⚠️ Usuario y contraseña son obligatorios';
+      errEl.style.display = 'block';
+    }
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Ingresar';
+    }
+    return;
+  }
   
   if (errEl) errEl.style.display = 'none';
   if (btn) { btn.disabled = true; btn.textContent = 'Verificando...'; }
@@ -418,20 +468,21 @@ function renderizarCardsCuentas(usrId, nombreUsuario) {
           listEl.appendChild(card);
         });
         
-        // ========== BOTÓN PARA CAMBIAR CONTRASEÑA ==========
+        // ========== BADGE PEQUEÑO PARA CAMBIAR CONTRASEÑA ==========
         const btnCambioDiv = document.createElement('div');
-        btnCambioDiv.style.marginTop = '16px';
+        btnCambioDiv.style.marginTop = '12px';
+        btnCambioDiv.style.textAlign = 'center';
         btnCambioDiv.innerHTML = `
-            <button id="btnCambiarPasswordCuentas" style="width:100%; background:#007aff; color:white; border:none; border-radius:14px; padding:12px; font-size:14px; font-weight:600; cursor:pointer; margin-bottom:12px;">
+            <div id="btnCambiarPasswordCuentas" style="display: inline-block; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 6px 16px; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.8); cursor: pointer; transition: all 0.2s ease;">
                 🔐 Cambiar contraseña
-            </button>
+            </div>
         `;
         listEl.appendChild(btnCambioDiv);
         
         document.getElementById('btnCambiarPasswordCuentas').addEventListener('click', () => {
             mostrarModalCambioPassword(nombreUsuario, usrId);
         });
-        // ==================================================
+        // ========================================================
       }
     })
     .catch((error) => {
