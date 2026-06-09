@@ -1,6 +1,11 @@
 // funciones/especiales.js
-// Módulo de Apuestas Especiales - VERSIÓN CON DROPDOWNS TOTALMENTE DESBLOQUEADOS
-// CORREGIDO: Los botones de grupos en CICLO 1 siempre funcionan
+// Módulo de Apuestas Especiales - VERSIÓN FINAL CORREGIDA
+// - SOLO dos pestañas: CICLO 1 y CICLO 2
+// - Botones de guardar integrados dentro de cada ciclo (2 líneas: 💾 Guardar / Ciclo X)
+// - CORREGIDO: CICLO 1 ya NO envía finalistas como 0 (NO sobrescribe)
+// - CORREGIDO: CICLO 2 ya NO envía grupos como 0 (NO sobrescribe)
+// - En CICLO 1: guarda solo grupos, respeta finalistas existentes en Velneo
+// - En CICLO 2: guarda solo finalistas, respeta grupos existentes en Velneo
 
 import { onSimuladorCambio, simGetFechaStr, simGetHoraStr } from './lab.js';
 import { getBandera, getNombreVisual } from './banderas.js';
@@ -46,7 +51,7 @@ let openDropdownId = null;
 let simuladorSuscrito = false;
 let currentJugadorId = null;
 
-// Estado de ventanas (solo para referencia visual, NO para bloquear)
+// Estado de ventanas
 let estadoVentanas = {
   ciclo1Bloqueado: false,
   ciclo2Pulso: 100,
@@ -77,7 +82,7 @@ async function cargarEquiposDesdeAPI() {
   }
   
   try {
-    const response = await fetch(`${BASE}/fifa_equ?api_key=${KEY}`);
+    const response = await fetch(`${BASE}/fifa_equ?api_key=${KEY}&_=${Date.now()}`);
     const data = await response.json();
     equiposCache = data.fifa_equ || [];
     
@@ -129,9 +134,10 @@ async function cargarPronosticosDesdeAPI(jugadorId) {
       await cargarEquiposDesdeAPI();
     }
     
-    const response = await fetch(`${BASE}/fifa_jug?api_key=${KEY}&filter[id]=${jugadorId}`);
+    const response = await fetch(`${BASE}/fifa_jug?api_key=${KEY}&filter[id]=${jugadorId}&_=${Date.now()}`);
     const data = await response.json();
     const jugador = data.fifa_jug?.[0];
+    
     if (jugador) {
       GRUPOS_LISTA.forEach(grupo => {
         const clf1Id = jugador[`grp_${grupo.toLowerCase()}_clf1`];
@@ -262,7 +268,7 @@ function actualizarEstadoVentanas() {
   estadoVentanas.ciclo2Pulso = ciclo2Pulso;
   estadoVentanas.ciclo2Bloqueado = ciclo2Bloqueado;
   
-  console.log('[Especiales] Ventanas actualizadas (solo referencia)');
+  console.log('[Especiales] Ventanas actualizadas');
 }
 
 function getBadgePulsoHTML() {
@@ -279,42 +285,60 @@ function getBadgePulsoHTML() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 3. MODAL DE CONFIRMACION
+// 2. RENDERIZADO DE RESUMENES PARA MODALES
 // ─────────────────────────────────────────────────────────────
 
-function mostrarModalConfirmacion(callback) {
-  let gruposHTML = '';
+function renderResumenGruposParaModal() {
+  let html = '<div style="max-height:300px; overflow-y:auto;">';
   GRUPOS_LISTA.forEach(grupo => {
     const sel = gruposSeleccion[grupo] || {};
     const primero = sel[1] ? `${getBandera(sel[1])} ${sel[1]}` : '<span style="color:#ff3b30;">❌ Pendiente</span>';
     const segundo = sel[2] ? `${getBandera(sel[2])} ${sel[2]}` : '<span style="color:#ff3b30;">❌ Pendiente</span>';
-    gruposHTML += `
-      <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:0.5px solid #e5e5ea; font-size:12px;">
-        <span style="font-weight:700; width:auto; min-width:36px; font-size:11px; padding-right:12px;">Grupo ${grupo}</span>
-        <span style="flex:1; font-size:12px;">1°: ${primero}</span>
-        <span style="flex:1; font-size:12px;">2°: ${segundo}</span>
+    html += `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:0.5px solid #e5e5ea; font-size:12px;">
+        <span style="font-weight:700; width:36px; font-size:11px;">${grupo}</span>
+        <span style="flex:1; font-size:12px;">🥇 ${primero}</span>
+        <span style="flex:1; font-size:12px;">🥈 ${segundo}</span>
       </div>
     `;
   });
-  
-  const finalistasHTML = `
-    <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:11px;">
-      <span style="font-weight:700; width:auto; min-width:80px; padding-right:12px;">🏆 Campeón:</span>
-      <span style="flex:1; font-size:12px;">${finalistasSeleccion.campeon ? getBandera(finalistasSeleccion.campeon) + ' ' + finalistasSeleccion.campeon : '<span style="color:#ff3b30;">❌ Pendiente</span>'}</span>
-    </div>
-    <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:11px;">
-      <span style="font-weight:700; width:auto; min-width:80px; padding-right:12px;">🥈 Subcampeón:</span>
-      <span style="flex:1; font-size:12px;">${finalistasSeleccion.subcampeon ? getBandera(finalistasSeleccion.subcampeon) + ' ' + finalistasSeleccion.subcampeon : '<span style="color:#ff3b30;">❌ Pendiente</span>'}</span>
-    </div>
-    <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:11px;">
-      <span style="font-weight:700; width:auto; min-width:80px; padding-right:12px;">🥉 Tercero:</span>
-      <span style="flex:1; font-size:12px;">${finalistasSeleccion.tercero ? getBandera(finalistasSeleccion.tercero) + ' ' + finalistasSeleccion.tercero : '<span style="color:#ff3b30;">❌ Pendiente</span>'}</span>
-    </div>
-    <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:11px;">
-      <span style="font-weight:700; width:auto; min-width:80px; padding-right:12px;">4° Cuarto:</span>
-      <span style="flex:1; font-size:12px;">${finalistasSeleccion.cuarto ? getBandera(finalistasSeleccion.cuarto) + ' ' + finalistasSeleccion.cuarto : '<span style="color:#ff3b30;">❌ Pendiente</span>'}</span>
+  html += '</div>';
+  return html;
+}
+
+function renderResumenFinalistasParaModal() {
+  return `
+    <div style="padding:4px 0;">
+      <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:0.5px solid #e5e5ea;">
+        <span style="font-weight:700;">🏆 Campeón:</span>
+        <span>${finalistasSeleccion.campeon ? getBandera(finalistasSeleccion.campeon) + ' ' + finalistasSeleccion.campeon : '<span style="color:#ff3b30;">❌ Pendiente</span>'}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:0.5px solid #e5e5ea;">
+        <span style="font-weight:700;">🥈 Subcampeón:</span>
+        <span>${finalistasSeleccion.subcampeon ? getBandera(finalistasSeleccion.subcampeon) + ' ' + finalistasSeleccion.subcampeon : '<span style="color:#ff3b30;">❌ Pendiente</span>'}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:0.5px solid #e5e5ea;">
+        <span style="font-weight:700;">🥉 Tercero:</span>
+        <span>${finalistasSeleccion.tercero ? getBandera(finalistasSeleccion.tercero) + ' ' + finalistasSeleccion.tercero : '<span style="color:#ff3b30;">❌ Pendiente</span>'}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding:8px 0;">
+        <span style="font-weight:700;">4️⃣ Cuarto:</span>
+        <span>${finalistasSeleccion.cuarto ? getBandera(finalistasSeleccion.cuarto) + ' ' + finalistasSeleccion.cuarto : '<span style="color:#ff3b30;">❌ Pendiente</span>'}</span>
+      </div>
     </div>
   `;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 3. MODALES DE CONFIRMACION
+// ─────────────────────────────────────────────────────────────
+
+// MODAL CICLO 1: SOLO GRUPOS
+function mostrarModalConfirmacionCiclo1(callback) {
+  const gruposCompletados = Object.keys(gruposSeleccion).filter(g => {
+    const sel = gruposSeleccion[g];
+    return sel && sel[1] && sel[2];
+  }).length;
   
   const modal = document.createElement('div');
   modal.id = 'esp-modal-confirmacion';
@@ -335,21 +359,73 @@ function mostrarModalConfirmacion(callback) {
     <div style="background: white; border-radius: 24px; max-width: 550px; width: 90%; max-height: 85%; overflow: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
       <div style="padding: 20px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 2px solid #007aff; padding-bottom: 12px;">
-          <h3 style="margin: 0; color: #1c1c1e; font-size: 16px;">📋 Confirmar Guardado</h3>
+          <h3 style="margin: 0; color: #1c1c1e; font-size: 16px;">🏆 Clasificados por Grupo</h3>
           <button id="esp-modal-cerrar" style="background: none; border: none; font-size: 22px; cursor: pointer; color: #8e8e93;">✕</button>
         </div>
         
         <div style="margin-bottom: 16px;">
-          <h4 style="margin: 0 0 8px 0; color: #007aff; font-size: 13px;">🏆 Clasificados por Grupo</h4>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="background:#e8f3ff; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600;">${gruposCompletados}/12 grupos</span>
+          </div>
           <div style="background: #f9f9fb; border-radius: 12px; padding: 8px;">
-            ${gruposHTML}
+            ${renderResumenGruposParaModal()}
           </div>
         </div>
         
+        <div style="display: flex; gap: 12px; margin-top: 8px;">
+          <button id="esp-modal-confirmar" style="flex:1; background: #34c759; color: white; border: none; border-radius: 14px; padding: 12px; font-size: 14px; font-weight: 700; cursor: pointer;">✅ Confirmar y Guardar</button>
+          <button id="esp-modal-cancelar" style="flex:1; background: #f2f2f7; color: #8e8e93; border: none; border-radius: 14px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer;">✕ Cancelar</button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  const cerrar = () => modal.remove();
+  
+  document.getElementById('esp-modal-cerrar')?.addEventListener('click', cerrar);
+  document.getElementById('esp-modal-cancelar')?.addEventListener('click', cerrar);
+  document.getElementById('esp-modal-confirmar')?.addEventListener('click', () => {
+    cerrar();
+    if (callback) callback();
+  });
+  modal.addEventListener('click', (e) => { if (e.target === modal) cerrar(); });
+}
+
+// MODAL CICLO 2: SOLO FINALISTAS
+function mostrarModalConfirmacionCiclo2(callback) {
+  const finalistasCompletados = Object.values(finalistasSeleccion).filter(v => v !== null).length;
+  
+  const modal = document.createElement('div');
+  modal.id = 'esp-modal-confirmacion';
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.7);
+    z-index: 20000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  `;
+  
+  modal.innerHTML = `
+    <div style="background: white; border-radius: 24px; max-width: 480px; width: 90%; max-height: 85%; overflow: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
+      <div style="padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 2px solid #af52de; padding-bottom: 12px;">
+          <h3 style="margin: 0; color: #1c1c1e; font-size: 16px;">👑 Finalistas</h3>
+          <button id="esp-modal-cerrar" style="background: none; border: none; font-size: 22px; cursor: pointer; color: #8e8e93;">✕</button>
+        </div>
+        
         <div style="margin-bottom: 16px;">
-          <h4 style="margin: 0 0 8px 0; color: #007aff; font-size: 13px;">⭐ Finalistas</h4>
-          <div style="background: #f9f9fb; border-radius: 12px; padding: 8px;">
-            ${finalistasHTML}
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="background:#f3e8ff; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600;">${finalistasCompletados}/4 seleccionados</span>
+          </div>
+          <div style="background: #f9f9fb; border-radius: 12px; padding: 12px;">
+            ${renderResumenFinalistasParaModal()}
           </div>
         </div>
         
@@ -375,7 +451,7 @@ function mostrarModalConfirmacion(callback) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 4. VALIDACIONES (SIN BLOQUEO)
+// 4. VALIDACIONES
 // ─────────────────────────────────────────────────────────────
 
 function validarSeleccionGrupo(grupo, pos, valor) {
@@ -400,7 +476,7 @@ function validarSeleccionFinalista(key, valor) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 5. RENDERIZADO DE SELECCIONADORES (COMPLETAMENTE DESBLOQUEADOS)
+// 5. RENDERIZADO DE SELECCIONADORES
 // ─────────────────────────────────────────────────────────────
 
 function renderGrupoSelector(grupo) {
@@ -485,45 +561,106 @@ function renderFinalistaSelector(titulo, key, pts, icon) {
   `;
 }
 
-function renderResumenGuardado() {
-  const gruposCompletados = Object.keys(gruposSeleccion).filter(g => {
-    const sel = gruposSeleccion[g];
-    return sel && sel[1] && sel[2];
-  }).length;
+// ─────────────────────────────────────────────────────────────
+// 6. RENDERIZADO DE CONTENIDO DE CADA TAB
+// ─────────────────────────────────────────────────────────────
+
+function renderCiclo1Content() {
+  function calcularTiempoRestanteCiclo1() {
+    const fechaActual = new Date();
+    const fechaCierre = new Date(2026, 5, 11, 14, 0, 0);
+    const diffMs = fechaCierre - fechaActual;
+    
+    if (diffMs <= 0) return 'CERRADO';
+    
+    const diffSegundos = Math.floor(diffMs / 1000);
+    const dias = Math.floor(diffSegundos / 86400);
+    const horas = Math.floor((diffSegundos % 86400) / 3600);
+    const minutos = Math.floor((diffSegundos % 3600) / 60);
+    
+    const partes = [];
+    if (dias > 0) partes.push(`${dias}d`);
+    if (horas > 0) partes.push(`${horas}h`);
+    if (minutos > 0) partes.push(`${minutos}m`);
+    
+    if (partes.length === 0) return '<1m';
+    return partes.join(' ');
+  }
   
-  const finalistasCompletados = Object.values(finalistasSeleccion).filter(v => v !== null).length;
-  const pulsoFinalistas = estadoVentanas.ciclo2Pulso === 100 ? '100%' : '50%';
-  const badgePulso = estadoVentanas.ciclo2Pulso === 100 ? '🟢' : '🟡';
+  const tiempoRestante = calcularTiempoRestanteCiclo1();
   
   return `
-    <div style="text-align: center; padding: 20px;">
-      <h3 style="color: #1c1c1e; margin-bottom: 8px; font-size: 16px; font-weight: 700;">Guardar Especiales</h3>
-      <p style="color: #8e8e93; margin-bottom: 24px; font-size: 13px;">Revisa tus selecciones antes de guardar</p>
-      
-      <div style="background: #f2f2f7; border-radius: 16px; padding: 16px; margin-bottom: 20px; text-align: left;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-          <span style="font-weight: 600; color: #1c1c1e;">📋 Grupos clasificados:</span>
-          <span id="esp-resumen-grupos" style="color: #007aff; font-weight: 700;">${gruposCompletados} / 12</span>
+    <div>
+      <div style="background: #f2f2f7; border-radius: 16px; padding: 12px 16px; margin-bottom: 12px;">
+        <strong style="display:block; margin-bottom:4px; font-size:16px; color:#8B0000;">LOS DOS MEJORES DE CADA GRUPO</strong>
+        <div style="margin-bottom:12px;">
+          <span style="background:rgba(255,255,255,0.8); border-radius:20px; padding:4px 12px; font-size:11px; font-weight:600; color:#ff9500;">⏱️ Faltan ${tiempoRestante} para seleccionar las parejas</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-          <span style="font-weight: 600; color: #1c1c1e;">🏆 Finalistas seleccionados:</span>
-          <span id="esp-resumen-finalistas" style="color: #007aff; font-weight: 700;">${finalistasCompletados} / 4</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-          <span style="font-weight: 600; color: #1c1c1e;">⚡ PULSO Finalistas:</span>
-          <span style="color: ${estadoVentanas.ciclo2Pulso === 100 ? '#34c759' : '#ff9500'}; font-weight: 700;">${badgePulso} ${pulsoFinalistas}</span>
+        
+        <!-- TABLA 2 COLUMNAS: PUNTOS + BOTÓN GUARDAR -->
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+          <div style="flex: 1; text-align: left;">
+            <div>• Si acierta en el orden: <span style="background:#ffcc00; color:#1c1c1e; padding:2px 8px; border-radius:12px; font-weight:700;">60 pts</span></div>
+            <div style="margin-top: 4px;">• En desorden: <span style="background:#ffcc00; color:#1c1c1e; padding:2px 8px; border-radius:12px; font-weight:700;">30 pts</span></div>
+          </div>
+          <div>
+            <button id="btn-guardar-ciclo1" style="background: #34c759; color: white; border: none; border-radius: 14px; padding: 8px 16px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; flex-direction: column; align-items: center; line-height: 1.3;">
+  <span>💾 Guardar</span>
+  <span>Ciclo 1</span>
+</button>
+          </div>
         </div>
       </div>
       
-      <button id="esp-btn-guardar-final" class="esp-btn-guardar">
-        Confirmar y Guardar Especiales
-      </button>
+      <div class="esp-seccion-titulo"><span>📋</span> Selecciona un grupo</div>
+      <div class="esp-grupos-tabs" id="esp-grupos-tabs">
+        ${GRUPOS_LISTA.map(g => {
+          let label = g;
+          if (g === 'K') label = 'K🇨🇴';
+          return `<button class="esp-grupo-tab ${grupoActivo === g ? 'active' : ''}" data-grupo="${g}">${label}</button>`;
+        }).join('')}
+      </div>
+      <div id="esp-grupo-panel">${GRUPOS_EQUIPOS[grupoActivo] ? renderGrupoSelector(grupoActivo) : '<div class="esp-grupo-panel">Cargando...</div>'}</div>
+    </div>
+  `;
+}
+
+function renderCiclo2Content() {
+  return `
+    <div>
+      <div style="background: #f2f2f7; border-radius: 16px; padding: 12px 16px; margin-bottom: 12px;">
+        <strong style="display:block; margin-bottom:4px; font-size:16px; color:#8B0000;">LOS CUATRO FINALISTAS</strong>
+        <div id="pulso-inline" style="margin-bottom:8px;">${getBadgePulsoHTML()}</div>
+        
+        <!-- TABLA 2 COLUMNAS: PUNTOS + BOTÓN GUARDAR -->
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+          <div style="flex: 1; text-align: left;">
+            <div>• Campeón: <strong>720 pts</strong></div>
+            <div>• Subcampeón: <strong>360 pts</strong></div>
+            <div>• Tercer puesto: <strong>180 pts</strong></div>
+            <div>• Cuarto puesto: <strong>90 pts</strong></div>
+          </div>
+          <div>
+            <button id="btn-guardar-ciclo2" style="background: #34c759; color: white; border: none; border-radius: 14px; padding: 8px 16px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; flex-direction: column; align-items: center; line-height: 1.3;">
+  <span>💾 Guardar</span>
+  <span>Ciclo 2</span>
+</button>
+          </div>
+        </div>
+      </div>
+      
+      <div id="esp-finalistas-container">
+        ${renderFinalistaSelector('🥇 Campeón', 'campeon', '720', '🏆')}
+        ${renderFinalistaSelector('🥈 Subcampeón', 'subcampeon', '360', '🥈')}
+        ${renderFinalistaSelector('🥉 Tercer puesto', 'tercero', '180', '🥉')}
+        ${renderFinalistaSelector('4° Cuarto puesto', 'cuarto', '90', '4️⃣')}
+      </div>
     </div>
   `;
 }
 
 // ─────────────────────────────────────────────────────────────
-// 6. FUNCIÓN PARA INICIALIZAR LOS TABS DE GRUPOS (CORREGIDA)
+// 7. FUNCIÓN PARA INICIALIZAR LOS TABS DE GRUPOS
 // ─────────────────────────────────────────────────────────────
 
 function inicializarGruposTabs() {
@@ -531,7 +668,6 @@ function inicializarGruposTabs() {
   console.log('[Especiales] Inicializando grupos tabs, encontrados:', tabs.length);
   
   tabs.forEach(tab => {
-    // Clonar para remover event listeners anteriores
     const newTab = tab.cloneNode(true);
     tab.parentNode.replaceChild(newTab, tab);
     
@@ -551,7 +687,7 @@ function inicializarGruposTabs() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 7. MANEJADORES DE EVENTOS
+// 8. MANEJADORES DE EVENTOS
 // ─────────────────────────────────────────────────────────────
 
 function cambiarTab(tabId) {
@@ -569,157 +705,13 @@ function cambiarTab(tabId) {
   if (!zona3Content) return;
   
   if (tabId === 'ciclo1') {
-    zona3Content.innerHTML = `
-      <div>
-        <div class="esp-seccion-titulo"><span>📋</span> Selecciona un grupo</div>
-        <div class="esp-grupos-tabs" id="esp-grupos-tabs">
-          ${GRUPOS_LISTA.map(g => {
-            let label = g;
-            if (g === 'K') label = 'K🇨🇴';
-            return `<button class="esp-grupo-tab ${grupoActivo === g ? 'active' : ''}" data-grupo="${g}">${label}</button>`;
-          }).join('')}
-        </div>
-        <div id="esp-grupo-panel">${GRUPOS_EQUIPOS[grupoActivo] ? renderGrupoSelector(grupoActivo) : '<div class="esp-grupo-panel">Cargando...</div>'}</div>
-      </div>
-    `;
-    
-    // Inicializar los tabs de grupos después de inyectar el HTML
+    zona3Content.innerHTML = renderCiclo1Content();
     setTimeout(() => inicializarGruposTabs(), 50);
-    
   } else if (tabId === 'ciclo2') {
-    zona3Content.innerHTML = `
-      <div id="esp-finalistas-container">
-        ${renderFinalistaSelector('🥇 Campeón', 'campeon', '720', '🏆')}
-        ${renderFinalistaSelector('🥈 Subcampeón', 'subcampeon', '360', '🥈')}
-        ${renderFinalistaSelector('🥉 Tercer puesto', 'tercero', '180', '🥉')}
-        ${renderFinalistaSelector('4° Cuarto puesto', 'cuarto', '90', '4️⃣')}
-      </div>
-    `;
-  } else if (tabId === 'guardar') {
-    zona3Content.innerHTML = renderResumenGuardado();
-  }
-  
-  const badgeExplicativo = document.getElementById('esp-badge-explicativo');
-  const badgePulso = document.getElementById('esp-badge-pulso');
-  
-  if (badgeExplicativo) {
-    if (tabId === 'ciclo1') {
-      // Calcular tiempo restante para el cierre del CICLO 1
-      function calcularTiempoRestanteCiclo1() {
-        const fechaActual = new Date();
-        const fechaCierre = new Date(2026, 5, 11, 14, 0, 0);
-        const diffMs = fechaCierre - fechaActual;
-        
-        if (diffMs <= 0) return 'CERRADO';
-        
-        const diffSegundos = Math.floor(diffMs / 1000);
-        const dias = Math.floor(diffSegundos / 86400);
-        const horas = Math.floor((diffSegundos % 86400) / 3600);
-        const minutos = Math.floor((diffSegundos % 3600) / 60);
-        
-        const partes = [];
-        if (dias > 0) partes.push(`${dias}d`);
-        if (horas > 0) partes.push(`${horas}h`);
-        if (minutos > 0) partes.push(`${minutos}m`);
-        
-        if (partes.length === 0) return '<1m';
-        return partes.join(' ');
-      }
-      
-      const tiempoRestante = calcularTiempoRestanteCiclo1();
-      
-      badgeExplicativo.innerHTML = `
-        <strong style="display:block; margin-bottom:4px; font-size:16px; color:#8B0000;">LOS DOS MEJORES DE CADA GRUPO</strong>
-        <div style="margin-bottom:12px;">
-          <span style="background:rgba(255,255,255,0.8); border-radius:20px; padding:4px 12px; font-size:11px; font-weight:600; color:#ff9500;">⏱️ Faltan ${tiempoRestante} para seleccionar las parejas</span>
-        </div>
-        <div style="text-align:left; margin-top:8px;">
-          • Si acierta en el orden: <span style="background:#ffcc00; color:#1c1c1e; padding:2px 8px; border-radius:12px; font-weight:700; margin-left:4px;">60 pts</span><br>
-          • En desorden: <span style="background:#ffcc00; color:#1c1c1e; padding:2px 8px; border-radius:12px; font-weight:700; margin-left:4px;">30 pts</span>
-        </div>
-      `;
-      badgeExplicativo.style.display = 'block';
-      if (badgePulso) badgePulso.style.display = 'none';
-      
-      // Actualizar countdown cada segundo
-      if (window.ciclo1CountdownInterval) clearInterval(window.ciclo1CountdownInterval);
-      window.ciclo1CountdownInterval = setInterval(() => {
-        if (tabActivo === 'ciclo1') {
-          const fechaActual = new Date();
-          const fechaCierre = new Date(2026, 5, 11, 14, 0, 0);
-          const diffMs = fechaCierre - fechaActual;
-          
-          if (diffMs <= 0) {
-            const countdownSpan = document.querySelector('#esp-badge-explicativo span');
-            if (countdownSpan) countdownSpan.textContent = '⏱️ CERRADO';
-            clearInterval(window.ciclo1CountdownInterval);
-            return;
-          }
-          
-          const diffSegundos = Math.floor(diffMs / 1000);
-          const dias = Math.floor(diffSegundos / 86400);
-          const horas = Math.floor((diffSegundos % 86400) / 3600);
-          const minutos = Math.floor((diffSegundos % 3600) / 60);
-          
-          const partes = [];
-          if (dias > 0) partes.push(`${dias}d`);
-          if (horas > 0) partes.push(`${horas}h`);
-          if (minutos > 0) partes.push(`${minutos}m`);
-          
-          const tiempoTexto = partes.length ? partes.join(' ') : '<1m';
-          
-          const countdownSpan = document.querySelector('#esp-badge-explicativo span');
-          if (countdownSpan) {
-            countdownSpan.textContent = `⏱️ Faltan ${tiempoTexto} para seleccionar las parejas`;
-          }
-        }
-      }, 1000);
-      
-    } else if (tabId === 'ciclo2') {
-      badgeExplicativo.innerHTML = `
-        <strong style="display:block; margin-bottom:4px; font-size:16px; color:#8B0000;">LOS CUATRO FINALISTAS</strong>
-        <div id="pulso-inline" style="margin-bottom:8px;"></div>
-        <div style="text-align:left; margin-top:4px;">
-          • Campeón: <strong>720 pts</strong><br>
-          • Subcampeón: <strong>360 pts</strong><br>
-          • Tercer puesto: <strong>180 pts</strong><br>
-          • Cuarto puesto: <strong>90 pts</strong>
-        </div>
-      `;
-      badgeExplicativo.style.display = 'block';
-      
-      const pulsoInline = document.getElementById('pulso-inline');
-      if (pulsoInline) {
-        pulsoInline.innerHTML = getBadgePulsoHTML();
-      }
-      
-      if (badgePulso) {
-        badgePulso.style.display = 'none';
-      }
-      
-    } else if (tabId === 'guardar') {
-      badgeExplicativo.style.display = 'none';
-      if (badgePulso) badgePulso.style.display = 'none';
-    }
+    zona3Content.innerHTML = renderCiclo2Content();
   }
   
   setTimeout(() => setupEventListeners(), 100);
-  actualizarPuntuacion();
-}
-
-function actualizarPuntuacion() {
-  const gruposCompletados = Object.keys(gruposSeleccion).filter(g => {
-    const sel = gruposSeleccion[g];
-    return sel && sel[1] && sel[2];
-  }).length;
-  
-  const finalistasCompletados = Object.values(finalistasSeleccion).filter(v => v !== null).length;
-  
-  const gruposSpan = document.getElementById('esp-resumen-grupos');
-  const finalistasSpan = document.getElementById('esp-resumen-finalistas');
-  
-  if (gruposSpan) gruposSpan.textContent = gruposCompletados + ' / 12';
-  if (finalistasSpan) finalistasSpan.textContent = finalistasCompletados + ' / 4';
 }
 
 function seleccionarEquipoGrupo(grupo, pos, valor) {
@@ -733,7 +725,6 @@ function seleccionarEquipoGrupo(grupo, pos, valor) {
   if (valSpan) valSpan.innerHTML = getBandera(valor) + ' ' + getNombreVisual(valor);
   if (btnEl) btnEl.classList.add('has-value');
   
-  actualizarPuntuacion();
   actualizarLocalStorage();
 }
 
@@ -747,20 +738,12 @@ function seleccionarFinalista(key, valor) {
   if (valSpan) valSpan.innerHTML = getBandera(valor) + ' ' + getNombreVisual(valor);
   if (btnEl) btnEl.classList.add('has-value');
   
-  actualizarPuntuacion();
   actualizarLocalStorage();
   
   if (tabActivo === 'ciclo2') {
     const zona3Content = document.getElementById('esp-zona3-contenido');
     if (zona3Content) {
-      zona3Content.innerHTML = `
-        <div id="esp-finalistas-container">
-          ${renderFinalistaSelector('🥇 Campeón', 'campeon', '720', '🏆')}
-          ${renderFinalistaSelector('🥈 Subcampeón', 'subcampeon', '360', '🥈')}
-          ${renderFinalistaSelector('🥉 Tercer puesto', 'tercero', '180', '🥉')}
-          ${renderFinalistaSelector('4° Cuarto puesto', 'cuarto', '90', '4️⃣')}
-        </div>
-      `;
+      zona3Content.innerHTML = renderCiclo2Content();
       setTimeout(() => setupEventListeners(), 50);
     }
   }
@@ -771,40 +754,19 @@ function refrescarEspecialesPorFecha() {
   actualizarEstadoVentanas();
   
   if (tabActivo === 'ciclo1') {
-    const panel = document.getElementById('esp-grupo-panel');
-    if (panel && GRUPOS_EQUIPOS[grupoActivo]) {
-      panel.innerHTML = renderGrupoSelector(grupoActivo);
-      setTimeout(() => setupEventListeners(), 50);
+    const zona3Content = document.getElementById('esp-zona3-contenido');
+    if (zona3Content) {
+      zona3Content.innerHTML = renderCiclo1Content();
+      setTimeout(() => inicializarGruposTabs(), 100);
+      setTimeout(() => setupEventListeners(), 100);
     }
-    // Re-inicializar los tabs de grupos después de refrescar
-    setTimeout(() => inicializarGruposTabs(), 100);
-    
   } else if (tabActivo === 'ciclo2') {
     const zona3Content = document.getElementById('esp-zona3-contenido');
     if (zona3Content) {
-      zona3Content.innerHTML = `
-        <div id="esp-finalistas-container">
-          ${renderFinalistaSelector('🥇 Campeón', 'campeon', '720', '🏆')}
-          ${renderFinalistaSelector('🥈 Subcampeón', 'subcampeon', '360', '🥈')}
-          ${renderFinalistaSelector('🥉 Tercer puesto', 'tercero', '180', '🥉')}
-          ${renderFinalistaSelector('4° Cuarto puesto', 'cuarto', '90', '4️⃣')}
-        </div>
-      `;
+      zona3Content.innerHTML = renderCiclo2Content();
       setTimeout(() => setupEventListeners(), 50);
     }
-  } else if (tabActivo === 'guardar') {
-    const zona3Content = document.getElementById('esp-zona3-contenido');
-    if (zona3Content) {
-      zona3Content.innerHTML = renderResumenGuardado();
-    }
   }
-  
-  const badgePulso = document.getElementById('esp-badge-pulso');
-  if (badgePulso && tabActivo === 'ciclo2') {
-    badgePulso.innerHTML = getBadgePulsoHTML();
-  }
-  
-  actualizarPuntuacion();
 }
 
 function setupEventListeners() {
@@ -816,6 +778,7 @@ function setupEventListeners() {
     }
   });
   
+  // Selectores de grupos
   document.querySelectorAll('.esp-selector[data-grupo]').forEach(selector => {
     const btn = selector.querySelector('.esp-selector-btn');
     const dropdown = selector.querySelector('.esp-dropdown-menu');
@@ -848,6 +811,7 @@ function setupEventListeners() {
     }
   });
   
+  // Selectores de finalistas
   document.querySelectorAll('.esp-selector[data-finalista]').forEach(selector => {
     const btn = selector.querySelector('.esp-selector-btn');
     const dropdown = selector.querySelector('.esp-dropdown-menu');
@@ -881,54 +845,123 @@ function setupEventListeners() {
     }
   });
   
-  const guardarBtn = document.getElementById('esp-btn-guardar-final');
-  if (guardarBtn) {
-    const newGuardarBtn = guardarBtn.cloneNode(true);
-    guardarBtn.parentNode.replaceChild(newGuardarBtn, guardarBtn);
+  // ========== BOTÓN GUARDAR CICLO 1 ==========
+  const btnGuardarCiclo1 = document.getElementById('btn-guardar-ciclo1');
+  if (btnGuardarCiclo1) {
+    const newBtn = btnGuardarCiclo1.cloneNode(true);
+    btnGuardarCiclo1.parentNode.replaceChild(newBtn, btnGuardarCiclo1);
     
-    newGuardarBtn.onclick = () => {
-      mostrarModalConfirmacion(() => guardarEspeciales());
+    newBtn.onclick = () => {
+      mostrarModalConfirmacionCiclo1(() => guardarEspecialesPorCiclo('ciclo1'));
     };
   }
+  
+  // ========== BOTÓN GUARDAR CICLO 2 ==========
+  const btnGuardarCiclo2 = document.getElementById('btn-guardar-ciclo2');
+  if (btnGuardarCiclo2) {
+    const newBtn = btnGuardarCiclo2.cloneNode(true);
+    btnGuardarCiclo2.parentNode.replaceChild(newBtn, btnGuardarCiclo2);
+    
+    newBtn.onclick = () => {
+      mostrarModalConfirmacionCiclo2(() => guardarEspecialesPorCiclo('ciclo2'));
+    };
+  }
+  
+  // Actualizar countdown de Ciclo 1 periódicamente
+  if (window.ciclo1CountdownInterval) clearInterval(window.ciclo1CountdownInterval);
+  window.ciclo1CountdownInterval = setInterval(() => {
+    if (tabActivo === 'ciclo1') {
+      const zona3Content = document.getElementById('esp-zona3-contenido');
+      if (zona3Content && zona3Content.innerHTML.includes('Faltan')) {
+        function calcularTiempoRestanteCiclo1() {
+          const fechaActual = new Date();
+          const fechaCierre = new Date(2026, 5, 11, 14, 0, 0);
+          const diffMs = fechaCierre - fechaActual;
+          
+          if (diffMs <= 0) return 'CERRADO';
+          
+          const diffSegundos = Math.floor(diffMs / 1000);
+          const dias = Math.floor(diffSegundos / 86400);
+          const horas = Math.floor((diffSegundos % 86400) / 3600);
+          const minutos = Math.floor((diffSegundos % 3600) / 60);
+          
+          const partes = [];
+          if (dias > 0) partes.push(`${dias}d`);
+          if (horas > 0) partes.push(`${horas}h`);
+          if (minutos > 0) partes.push(`${minutos}m`);
+          
+          if (partes.length === 0) return '<1m';
+          return partes.join(' ');
+        }
+        
+        const tiempoRestante = calcularTiempoRestanteCiclo1();
+        const countdownSpan = document.querySelector('#esp-zona3-contenido span[style*="background:rgba(255,255,255,0.8)"]');
+        if (countdownSpan) {
+          countdownSpan.textContent = `⏱️ Faltan ${tiempoRestante} para seleccionar las parejas`;
+        }
+      }
+    }
+  }, 1000);
 }
 
 // ─────────────────────────────────────────────────────────────
-// 8. GUARDAR EN API
+// 9. GUARDAR EN API (CORREGIDO - NO ENVÍA CAMPOS QUE NO SE MODIFICAN)
 // ─────────────────────────────────────────────────────────────
 
-async function guardarEspeciales() {
-  const guardarBtn = document.getElementById('esp-btn-guardar-final');
-  const originalText = guardarBtn?.textContent || 'Guardar';
-  
+async function guardarEspecialesPorCiclo(ciclo) {
   if (!currentJugadorId) {
     mostrarToast('❌ Error: No se ha identificado el jugador', 'err');
     return;
   }
   
-  if (guardarBtn) {
-    guardarBtn.textContent = '⟳ Enviando a Velneo...';
-    guardarBtn.disabled = true;
+  const payload = { id: currentJugadorId };
+  
+  if (ciclo === 'ciclo1') {
+    console.log('[Especiales] Guardando solo CICLO 1 (Clasificados por grupo)');
+    const gruposOrden = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+    gruposOrden.forEach(grupo => {
+      const sel = gruposSeleccion[grupo] || {};
+      const clf1 = sel[1] ? getEquipoIdPorNombre(sel[1]) : 0;
+      const clf2 = sel[2] ? getEquipoIdPorNombre(sel[2]) : 0;
+      // Solo enviar si hay valor (evita enviar 0 innecesarios)
+      if (clf1 !== 0) payload[`grp_${grupo.toLowerCase()}_clf1`] = clf1;
+      if (clf2 !== 0) payload[`grp_${grupo.toLowerCase()}_clf2`] = clf2;
+    });
+    
+    // IMPORTANTE: NO enviamos cam, sub, ter, cua
+    // Así Velneo mantiene los valores existentes de finalistas
+    
+  } else if (ciclo === 'ciclo2') {
+    console.log('[Especiales] Guardando solo CICLO 2 (Finalistas)');
+    
+    if (finalistasSeleccion.campeon) {
+      const camId = getEquipoIdPorNombre(finalistasSeleccion.campeon);
+      if (camId) payload.cam = camId;
+    }
+    if (finalistasSeleccion.subcampeon) {
+      const subId = getEquipoIdPorNombre(finalistasSeleccion.subcampeon);
+      if (subId) payload.sub = subId;
+    }
+    if (finalistasSeleccion.tercero) {
+      const terId = getEquipoIdPorNombre(finalistasSeleccion.tercero);
+      if (terId) payload.ter = terId;
+    }
+    if (finalistasSeleccion.cuarto) {
+      const cuaId = getEquipoIdPorNombre(finalistasSeleccion.cuarto);
+      if (cuaId) payload.cua = cuaId;
+    }
+    
+    // IMPORTANTE: NO enviamos grp_X_clf1, grp_X_clf2
+    // Así Velneo mantiene los valores existentes de grupos
   }
   
-  const payload = {
-    id: currentJugadorId
-  };
+  console.log(`[Especiales] Enviando payload (${ciclo}):`, payload);
   
-  const gruposOrden = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
-  gruposOrden.forEach(grupo => {
-    const sel = gruposSeleccion[grupo] || {};
-    const clf1 = sel[1] ? getEquipoIdPorNombre(sel[1]) : 0;
-    const clf2 = sel[2] ? getEquipoIdPorNombre(sel[2]) : 0;
-    payload[`grp_${grupo.toLowerCase()}_clf1`] = clf1;
-    payload[`grp_${grupo.toLowerCase()}_clf2`] = clf2;
-  });
-  
-  payload.cam = finalistasSeleccion.campeon ? getEquipoIdPorNombre(finalistasSeleccion.campeon) : 0;
-  payload.sub = finalistasSeleccion.subcampeon ? getEquipoIdPorNombre(finalistasSeleccion.subcampeon) : 0;
-  payload.ter = finalistasSeleccion.tercero ? getEquipoIdPorNombre(finalistasSeleccion.tercero) : 0;
-  payload.cua = finalistasSeleccion.cuarto ? getEquipoIdPorNombre(finalistasSeleccion.cuarto) : 0;
-  
-  console.log('[Especiales] Enviando payload a API_PUT_JUG:', payload);
+  // Si el payload solo tiene { id }, no hay nada que guardar
+  if (Object.keys(payload).length === 1) {
+    mostrarToast('⚠️ No hay cambios para guardar', 'err');
+    return;
+  }
   
   try {
     const response = await fetch(`${BASE_V2}/_process/API_PUT_JUG?api_key=${KEY}`, {
@@ -948,33 +981,17 @@ async function guardarEspeciales() {
     datosGuardados = true;
     actualizarLocalStorage();
     
-    if (guardarBtn) {
-      guardarBtn.textContent = '✓ Guardado en Velneo!';
-      setTimeout(() => {
-        guardarBtn.textContent = originalText;
-        guardarBtn.disabled = false;
-      }, 2000);
-    }
-    
-    mostrarToast(`✅ Especiales guardados correctamente (PULSO ${estadoVentanas.ciclo2Pulso}%)`, 'ok');
+    const mensajeCiclo = ciclo === 'ciclo1' ? 'Ciclo 1 (Clasificados)' : 'Ciclo 2 (Finalistas)';
+    mostrarToast(`✅ ${mensajeCiclo} guardado correctamente`, 'ok');
     
   } catch (error) {
     console.error('[Especiales] Error al guardar:', error);
-    
-    if (guardarBtn) {
-      guardarBtn.textContent = '❌ Error al guardar';
-      setTimeout(() => {
-        guardarBtn.textContent = originalText;
-        guardarBtn.disabled = false;
-      }, 2000);
-    }
-    
     mostrarToast(`❌ Error al guardar: ${error.message}`, 'err');
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-// 9. RENDERIZADO PRINCIPAL
+// 10. RENDERIZADO PRINCIPAL
 // ─────────────────────────────────────────────────────────────
 
 export async function renderizarEspeciales(contenedor, datosCuenta) {
@@ -1009,14 +1026,7 @@ export async function renderizarEspeciales(contenedor, datosCuenta) {
         .esp-tabs-container { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid #e5e5ea; padding-bottom: 8px; flex-shrink: 0; }
         .esp-tab { flex: 1; padding: 12px 8px; background: none; border: 1px solid #d1d1d6; border-radius: 12px; font-size: 13px; font-weight: 600; color: #8e8e93; cursor: pointer; transition: all 0.2s; text-align: center; }
         .esp-tab.active { background: #007aff; border-color: #007aff; color: #fff; font-size: 15px; font-weight: 700; }
-        .esp-tab[data-tab="guardar"] { background: #34c759; border-color: #34c759; color: #fff; font-size: 13px; }
-        .esp-tab[data-tab="guardar"].active { font-size: 15px; }
         @media (max-width: 600px) { .esp-tab { padding: 8px 4px; font-size: 11px; } .esp-tab.active { font-size: 13px; } }
-        
-        .esp-badge-explicativo { background: #f2f2f7; border-radius: 16px; padding: 12px 16px; margin-bottom: 12px; font-size: 13px; font-weight: 500; color: #3c3c43; text-align: center; line-height: 1.4; flex-shrink: 0; }
-        .esp-pulso-badge { border-radius: 20px; padding: 6px 12px; margin-bottom: 20px; font-size: 11px; font-weight: 600; text-align: center; }
-        .esp-pulso-badge.pulso-100 { background: #eafaf1; border: 1px solid #a9dfbf; color: #1e8449; }
-        .esp-pulso-badge.pulso-50 { background: #fff9ec; border: 1px solid #ffd080; color: #c05a00; }
         
         .esp-seccion-titulo { font-size: 16px; font-weight: 700; color: #1c1c1e; margin: 20px 0 12px; display: flex; align-items: center; gap: 10px; }
         .esp-grupos-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; max-width: 300px; justify-content: center; margin-left: auto; margin-right: auto; }
@@ -1046,8 +1056,6 @@ export async function renderizarEspeciales(contenedor, datosCuenta) {
         .esp-finalista-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
         .esp-finalista-titulo { font-size: 15px; font-weight: 700; color: #1c1c1e; }
         .esp-finalista-pts { font-size: 12px; font-weight: 700; color: #ff9500; background: #fff9ec; padding: 3px 10px; border-radius: 20px; }
-        .esp-btn-guardar { width: 100%; background: #34c759; color: #fff; border: none; border-radius: 14px; padding: 14px; font-size: 16px; font-weight: 700; cursor: pointer; }
-        .esp-btn-guardar:active { transform: scale(0.98); }
         
         .esp-zona3 {
           flex: 1;
@@ -1061,34 +1069,12 @@ export async function renderizarEspeciales(contenedor, datosCuenta) {
         <div class="esp-tabs-container">
           <button class="esp-tab active" data-tab="ciclo1">CICLO 1</button>
           <button class="esp-tab" data-tab="ciclo2">CICLO 2</button>
-          <button class="esp-tab" data-tab="guardar" style="background:#34c759; color:#fff;">💾 GUARDAR</button>
         </div>
-      </div>
-      
-      <div style="padding: 0 20px; flex-shrink: 0;">
-        <div id="esp-badge-explicativo" class="esp-badge-explicativo">
-          <strong style="display:block; margin-bottom:8px; font-size:16px; color:#8B0000;">LOS DOS MEJORES DE CADA GRUPO</strong>
-          <div style="text-align:left; margin-top:8px;">
-            • Si acierta en el orden: <strong>60 pts</strong><br>
-            • En desorden: <strong>30 pts</strong>
-          </div>
-        </div>
-        <div id="esp-badge-pulso" class="esp-pulso-badge pulso-100" style="display: none;"></div>
       </div>
       
       <div id="esp-zona3" class="esp-zona3">
         <div id="esp-zona3-contenido">
-          <div>
-            <div class="esp-seccion-titulo"><span>📋</span> Selecciona un grupo</div>
-            <div class="esp-grupos-tabs" id="esp-grupos-tabs">
-              ${GRUPOS_LISTA.map(g => {
-                let label = g;
-                if (g === 'K') label = 'K🇨🇴';
-                return `<button class="esp-grupo-tab ${grupoActivo === g ? 'active' : ''}" data-grupo="${g}">${label}</button>`;
-              }).join('')}
-            </div>
-            <div id="esp-grupo-panel">${GRUPOS_EQUIPOS[grupoActivo] ? renderGrupoSelector(grupoActivo) : '<div class="esp-grupo-panel">Cargando...</div>'}</div>
-          </div>
+          ${renderCiclo1Content()}
         </div>
       </div>
     </div>
@@ -1098,10 +1084,8 @@ export async function renderizarEspeciales(contenedor, datosCuenta) {
     tab.onclick = () => cambiarTab(tab.dataset.tab);
   });
   
-  // Inicializar los tabs de grupos después del renderizado principal
   setTimeout(() => inicializarGruposTabs(), 100);
   setTimeout(() => setupEventListeners(), 100);
-  actualizarPuntuacion();
 }
 
 // ========== FUNCIÓN PARA RENDERIZAR CON TAB ESPECÍFICO ==========
@@ -1123,10 +1107,6 @@ export async function renderizarEspecialesConTab(contenedor, datosCuenta, tabDes
                 }
             }
         }
-        // Re-inicializar los tabs de grupos después de cambiar de tab
         setTimeout(() => inicializarGruposTabs(), 100);
     }, 400);
 }
-
-window.mostrarModalConfirmacion = mostrarModalConfirmacion;
-window.guardarEspeciales = guardarEspeciales;
