@@ -1,9 +1,10 @@
 // funciones/login.js
-// Módulo de autenticación - VERSIÓN CON CAMBIO OBLIGATORIO DE CONTRASEÑA
+// Módulo de autenticación - VERSIÓN ESTABLE (sin anti-cache agresivo)
 // - Botón "Cambiar contraseña" como badge pequeño y discreto
 // - Modal con botones "Cambiar contraseña" y "Cancelar"
 // - Autocomplete deshabilitado para evitar sugerencias de Windows
 // - Validación de espacios en blanco
+// - Limpieza completa de localStorage al logout
 
 const BASE    = 'https://server.sion.hysintegrar.com/fifa2026/vERP_2_dat_dat/v1';
 const BASE_V2 = 'https://server.sion.hysintegrar.com/fifa2026/vERP_2_dat_dat/v2';
@@ -38,6 +39,26 @@ function obtenerHashPassword(pass) {
         console.warn('⚠️ Usando hash simple (sha3_256 no disponible)');
         return generarHashSimple(pass + KEY).substring(0, 50);
     }
+}
+
+// Función para limpiar completamente los datos del usuario (logout)
+function limpiarDatosUsuario() {
+    const keysToRemove = [
+        'polla_recordar',
+        'polla_usuario',
+        'usuarioActual',
+        'polla_pronosticos_partidos',
+        'polla_pronosticos_especiales',
+        'polla_jugador_id',
+        'polla_ultima_sincronizacion',
+        'polla_ultima_sincronizacion_completa',
+        'polla_equipos_cache',
+        'polla_grupos_equipos',
+        'polla_data_version'
+    ];
+    
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    console.log('[Login] ✅ Datos de usuario limpiados');
 }
 
 // Mostrar modal de cambio de contraseña
@@ -135,16 +156,17 @@ function mostrarModalCambioPassword(usuario, usrId) {
     const cancelarBtn = document.getElementById('btn-cancelar-modal');
     const errorDiv = document.getElementById('password-error');
     
-    // Botón Cancelar
+    // Botón Cancelar - limpiar datos al cancelar
     if (cancelarBtn) {
         cancelarBtn.onclick = () => {
             overlay.remove();
             modalActivo = false;
-            // Limpiar campos del login
+            // Limpiar campos del login Y datos de localStorage
             const inputUsuario = document.getElementById('inputUsuario');
             const inputPassword = document.getElementById('inputPassword');
             if (inputUsuario) inputUsuario.value = '';
             if (inputPassword) inputPassword.value = '';
+            limpiarDatosUsuario(); // Limpiar completamente
         };
     }
     
@@ -190,9 +212,8 @@ function mostrarModalCambioPassword(usuario, usrId) {
                     console.log('Respuesta API_PUT_PWD:', respuesta);
                     
                     if (respuesta.COD === 1) {
-                        localStorage.removeItem('polla_recordar');
-                        localStorage.removeItem('polla_usuario');
-                        localStorage.removeItem('usuarioActual');
+                        // Limpiar TODO antes de recargar
+                        limpiarDatosUsuario();
                         
                         overlay.remove();
                         modalActivo = false;
@@ -233,6 +254,7 @@ function mostrarModalCambioPassword(usuario, usrId) {
         if (e.target === overlay) {
             overlay.remove();
             modalActivo = false;
+            limpiarDatosUsuario();
         }
     });
 }
@@ -300,6 +322,9 @@ export function configurarLogin(fnCargarFrontpage) {
       if (chkRecordar && !chkRecordar.checked && inputUsuario) {
         inputUsuario.value = '';
       }
+      
+      // Limpiar datos al regresar al login
+      limpiarDatosUsuario();
       
       if (cuentascCard && loginCard) {
         cuentascCard.classList.add('login-retirado');
@@ -479,9 +504,12 @@ function renderizarCardsCuentas(usrId, nombreUsuario) {
         `;
         listEl.appendChild(btnCambioDiv);
         
-        document.getElementById('btnCambiarPasswordCuentas').addEventListener('click', () => {
+        const btnCambio = document.getElementById('btnCambiarPasswordCuentas');
+        if (btnCambio) {
+          btnCambio.addEventListener('click', () => {
             mostrarModalCambioPassword(nombreUsuario, usrId);
-        });
+          });
+        }
         // ========================================================
       }
     })
