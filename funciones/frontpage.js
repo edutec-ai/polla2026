@@ -1,6 +1,5 @@
 // funciones/frontpage.js
-// VERSIÓN CON "AHORA" COMO PANTALLA DE BIENVENIDA
-// INCLUYE REGLAS EN EL MENÚ Y SOPORTE PARA TAB EN ESPECIALES
+// VERSIÓN CORREGIDA - CON TIMESTAMP ANTI-CACHE EN TODOS LOS GET
 
 import { inicializarMenu } from './menu.js';
 import { renderizarLab, onSimuladorCambio } from './lab.js';
@@ -15,19 +14,23 @@ import {
   guardarPronosticosPartidosLocal, 
   guardarPronosticosEspecialesLocal,
   guardarJugadorIdLocal,
-  limpiarLocalStorage,
-  actualizarTimestampSincronizacion
+  actualizarTimestampSincronizacion,
+  guardarUltimaSincronizacionCompleta,
+  guardarEquiposCacheLocal
 } from './sync.js';
 
-// Configuración de APIs para carga inicial
 const BASE_V2 = 'https://server.sion.hysintegrar.com/fifa2026/vERP_2_dat_dat/v2';
 const BASE = 'https://server.sion.hysintegrar.com/fifa2026/vERP_2_dat_dat/v1';
 const KEY = 'SuzvTp4qwXQtAVFJbdzP';
 
-// Variable para almacenar la función que permite cambiar de vista desde otros módulos
 let globalCambiarVista = null;
 
-// Función para cambiar la vista principal (acepta un parámetro adicional para especiales)
+// Función helper para agregar timestamp anti-cache a URLs GET
+function urlWithTimestamp(url) {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}_=${Date.now()}`;
+}
+
 function cambiarVistaPrincipal(opcion, datosCuenta, tabEspecial = null) {
     const contenidoContainer = document.getElementById('fp-body-contenido');
     if (!contenidoContainer) return;
@@ -74,27 +77,45 @@ function cambiarVistaPrincipal(opcion, datosCuenta, tabEspecial = null) {
     }, 200);
 }
 
-// Función para cargar datos iniciales desde API
 async function cargarDatosIniciales(jugadorId) {
   console.log('[Sync] Cargando datos iniciales desde API para jugador:', jugadorId);
   
   try {
-    const responsePartidos = await fetch(`${BASE_V2}/fifa_jug_pro?api_key=${KEY}&filter[id]=${jugadorId}&fields=jug,jug.name,id,ptd,pro_gol_loc,pro_gol_vis,pro_res`);
-    const dataPartidos = await responsePartidos.json();
-    const pronosticosPartidos = {};
-    (dataPartidos.fifa_jug_pro || []).forEach(p => {
-      pronosticosPartidos[p.ptd] = { s1: p.pro_gol_loc || 0, s2: p.pro_gol_vis || 0 };
-    });
-    guardarPronosticosPartidosLocal(pronosticosPartidos);
-    console.log(`[Sync] Guardados ${Object.keys(pronosticosPartidos).length} pronósticos de partidos`);
-    
-    const responseEquipos = await fetch(`${BASE}/fifa_equ?api_key=${KEY}`);
+    // 1. Cargar equipos (con timestamp anti-cache)
+    const equiposUrl = urlWithTimestamp(`${BASE}/fifa_equ?api_key=${KEY}`);
+    console.log('[Sync] Fetching equipos:', equiposUrl);
+    const responseEquipos = await fetch(equiposUrl);
+    if (!responseEquipos.ok) throw new Error('Error cargando equipos');
     const dataEquipos = await responseEquipos.json();
     const equiposCache = dataEquipos.fifa_equ || [];
+    guardarEquiposCacheLocal(equiposCache);
     
-    const responseEspeciales = await fetch(`${BASE}/fifa_jug?api_key=${KEY}&filter[id]=${jugadorId}`);
+    // 2. PARTIDOS - 104 pronósticos (con timestamp anti-cache)
+    const partidosUrl = urlWithTimestamp(`${BASE_V2}/fifa_jug_pro?api_key=${KEY}&filter[id]=${jugadorId}&fields=jug,jug.name,id,ptd,pro_gol_loc,pro_gol_vis,pro_res&filterQuery[ptd.cic]=1`);
+    console.log('[Sync] Fetching partidos:', partidosUrl);
+    const responsePartidos = await fetch(partidosUrl);
+    if (!responsePartidos.ok) throw new Error('Error cargando partidos');
+    const dataPartidos = await responsePartidos.json();
+    
+    const pronosticosPartidos = {};
+    (dataPartidos.fifa_jug_pro || []).forEach(p => {
+      pronosticosPartidos[p.ptd] = { 
+        s1: p.pro_gol_loc || 0, 
+        s2: p.pro_gol_vis || 0,
+        res: p.pro_res || null
+      };
+    });
+    guardarPronosticosPartidosLocal(pronosticosPartidos);
+    console.log(`[Sync] ✅ Guardados ${Object.keys(pronosticosPartidos).length} pronósticos de partidos`);
+    
+    // 3. CLASIFICADOS POR GRUPO + FINALISTAS (con timestamp anti-cache)
+    const especialesUrl = urlWithTimestamp(`${BASE}/fifa_jug?api_key=${KEY}&filter[id]=${jugadorId}`);
+    console.log('[Sync] Fetching especiales:', especialesUrl);
+    const responseEspeciales = await fetch(especialesUrl);
+    if (!responseEspeciales.ok) throw new Error('Error cargando especiales');
     const dataEspeciales = await responseEspeciales.json();
     const jugador = dataEspeciales.fifa_jug?.[0];
+    
     if (jugador) {
       const gruposData = {};
       const finalistasData = {
@@ -144,15 +165,19 @@ async function cargarDatosIniciales(jugadorId) {
       }
       
       guardarPronosticosEspecialesLocal({ grupos: gruposData, finalistas: finalistasData });
-      console.log('[Sync] Guardados pronósticos de especiales');
+      console.log('[Sync] ✅ Guardados pronósticos de especiales (grupos y finalistas)');
+      console.log('   Finalistas:', finalistasData);
     }
     
     guardarJugadorIdLocal(jugadorId);
     actualizarTimestampSincronizacion();
-    console.log('[Sync] Sincronización inicial completada');
+    guardarUltimaSincronizacionCompleta();
+    
+    console.log('[Sync] ✅ Sincronización inicial COMPLETADA exitosamente');
     
   } catch (error) {
-    console.error('[Sync] Error cargando datos iniciales:', error);
+    console.error('[Sync] ❌ Error cargando datos iniciales:', error);
+    throw error;
   }
 }
 
@@ -162,22 +187,50 @@ export async function cargarFrontpage(datosCuenta) {
   
   const esAdmin = datosCuenta.usr === 'super' || datosCuenta.name === 'super' || datosCuenta.nombre === 'super';
   const jugadorId = datosCuenta.id || datosCuenta.ID;
+  
+  const contenidoContainer = document.getElementById('fp-body-contenido');
+  if (contenidoContainer) {
+    contenidoContainer.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:300px;">
+        <div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+        <div style="margin-top:16px;color:white;font-size:14px;">Cargando tus pronósticos...</div>
+        <div style="margin-top:8px;color:rgba(255,255,255,0.5);font-size:11px;">Sincronizando con Velneo</div>
+      </div>
+      <style>
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      </style>
+    `;
+  }
+  
   if (jugadorId) {
-    cargarDatosIniciales(jugadorId);
+    try {
+      await cargarDatosIniciales(jugadorId);
+      console.log('[Frontpage] Datos cargados exitosamente, procediendo a renderizar');
+    } catch (error) {
+      console.error('[Frontpage] Error cargando datos:', error);
+      if (contenidoContainer) {
+        contenidoContainer.innerHTML = `
+          <div style="text-align:center;padding:40px;color:#ff6b6b;">
+            <div>⚠️</div>
+            <div style="margin-top:12px;">Error al sincronizar con Velneo</div>
+            <div style="margin-top:8px;font-size:12px;">Los datos mostrados podrían estar desactualizados</div>
+          </div>
+        `;
+      }
+    }
   }
   
   const adminConfig = getAdminConfig();
   
   onSimuladorCambio((fecha, hora) => console.log('📅 Simulador actualizado:', fecha, hora));
   
-  // Guardar la función global para cambiar vista
   globalCambiarVista = (opcion, cuenta, tabEspecial = null) => cambiarVistaPrincipal(opcion, cuenta, tabEspecial);
   
-  // Configurar el callback para ahora.js
   setCambiarVistaCallback(globalCambiarVista);
   setReglasCallback(globalCambiarVista);
   
-  // Suscribir ahora.js al simulador
   suscribirAhoraAlSimulador();
   
   const manejarSeleccionMenu = (opcion, cuenta) => {
@@ -263,7 +316,6 @@ export async function cargarFrontpage(datosCuenta) {
         min-height: 0;
       }
       
-      /* DESKTOP: min-width 769px */
       @media (min-width: 769px) {
         .fp-body-zone-menu { 
           width: 280px;
@@ -290,7 +342,6 @@ export async function cargarFrontpage(datosCuenta) {
         }
       }
       
-      /* MÓVIL: max-width 768px */
       @media (max-width: 768px) {
         .fp-content-body { 
           flex-direction: column; 
@@ -415,7 +466,6 @@ export async function cargarFrontpage(datosCuenta) {
     </div>
   `;
 
-  // ========== MENÚ DESKTOP ==========
   const opcionesMenu = [
     { id: 'ahora', nombre: 'AHORA', color: '#34c759', icono: '🏠' },
     { id: 'partidos', nombre: 'PARTIDOS', color: '#007aff', icono: '⚽' },
@@ -446,7 +496,6 @@ export async function cargarFrontpage(datosCuenta) {
     }, 400);
   };
   
-  // ========== TAB BAR MÓVIL ==========
   const mobileTabBar = document.getElementById('mobile-tab-bar');
   if (mobileTabBar) {
     const opcionesMovil = [
@@ -474,7 +523,6 @@ export async function cargarFrontpage(datosCuenta) {
     });
   }
   
-  // Cargar "AHORA" como pantalla de bienvenida
   setTimeout(() => {
     renderizarAhora(document.getElementById('fp-body-contenido'), datosCuenta);
   }, 100);
