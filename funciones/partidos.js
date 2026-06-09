@@ -192,7 +192,10 @@ async function cargarPartidos() {
 async function cargarEquipos() {
     try { 
         const timestamp = Date.now();
+        
         const response = await fetch(`${BASE}/fifa_equ?api_key=${KEY}&_=${timestamp}`); 
+        
+        
         equiposCache = (await response.json()).fifa_equ || []; 
         console.log(`[Partidos] Cargados ${equiposCache.length} equipos`);
         return equiposCache; 
